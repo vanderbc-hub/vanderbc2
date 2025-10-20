@@ -1,0 +1,1552 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Estoque - Laboratório de Eletrônica</title>
+    
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    
+    <!-- Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        :root {
+            --primary-color: #00ff88;
+            --primary-dark: #00cc6a;
+            --bg-dark: #121212;
+            --bg-card: #1e1e1e;
+            --text-light: #f8f9fa;
+            --text-muted: #adb5bd;
+        }
+        
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            padding-top: 20px;
+        }
+        
+        .navbar {
+            background-color: #000 !important;
+            border-bottom: 2px solid var(--primary-color);
+        }
+        
+        .navbar-brand, .nav-link {
+            color: var(--primary-color) !important;
+        }
+        
+        .nav-link:hover {
+            color: var(--primary-dark) !important;
+        }
+        
+        .nav-link.active {
+            font-weight: bold;
+            color: var(--primary-color) !important;
+            background-color: rgba(0, 255, 136, 0.1);
+            border-radius: 5px;
+        }
+        
+        .status-online {
+            color: var(--primary-color);
+        }
+        
+        .status-offline {
+            color: #ff6b6b;
+        }
+        
+        .card {
+            background-color: var(--bg-card);
+            border: 1px solid #333;
+            color: var(--text-light);
+        }
+        
+        .card-header {
+            background-color: #000;
+            border-bottom: 1px solid #333;
+            color: var(--primary-color);
+        }
+        
+        .table {
+            color: var(--text-light);
+        }
+        
+        .table th {
+            background-color: #000;
+            color: var(--primary-color);
+            border-color: #333;
+        }
+        
+        .table td {
+            border-color: #333;
+        }
+        
+        .table-hover tbody tr:hover {
+            background-color: rgba(0, 255, 136, 0.1);
+            color: var(--text-light);
+        }
+        
+        .form-control, .form-select {
+            background-color: #2d2d2d;
+            border: 1px solid #444;
+            color: var(--text-light);
+        }
+        
+        .form-control:focus, .form-select:focus {
+            background-color: #2d2d2d;
+            border-color: var(--primary-color);
+            color: var(--text-light);
+            box-shadow: 0 0 0 0.25rem rgba(0, 255, 136, 0.25);
+        }
+        
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: #000;
+            font-weight: bold;
+        }
+        
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            border-color: var(--primary-dark);
+            color: #000;
+        }
+        
+        .dashboard-card {
+            transition: transform 0.3s ease;
+            border: 1px solid #333;
+            cursor: pointer;
+        }
+        
+        .dashboard-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+        }
+        
+        .low-stock {
+            background-color: rgba(255, 193, 7, 0.2) !important;
+        }
+        
+        .out-of-stock {
+            background-color: rgba(220, 53, 69, 0.2) !important;
+        }
+        
+        .page-section {
+            display: none;
+        }
+        
+        .active-section {
+            display: block;
+        }
+        
+        .entrada-badge {
+            background-color: var(--primary-color) !important;
+            color: #000;
+        }
+        
+        .saida-badge {
+            background-color: #ff6b6b !important;
+            color: #000;
+        }
+        
+        .action-buttons {
+            white-space: nowrap;
+        }
+        
+        .user-badge {
+            background-color: var(--primary-color);
+            color: #000;
+            font-size: 0.8em;
+            margin-left: 10px;
+        }
+        
+        /* Modal de edição de lançamento */
+        .modal-content {
+            background-color: var(--bg-card);
+            color: var(--text-light);
+        }
+        
+        .modal-header {
+            border-bottom: 1px solid #333;
+        }
+        
+        .modal-footer {
+            border-top: 1px solid #333;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 1rem;
+            height: 1rem;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Novos estilos para o título */
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .subtitle {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            text-align: right;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container">
+            <a class="navbar-brand" href="#">
+                <i class="bi bi-motherboard"></i> Controle de Estoque
+                <small class="status-online" id="status-conexao">
+                    <i class="bi bi-check-circle"></i> Conectando...
+                </small>
+                <span class="user-badge badge" id="modo-conexao">Supabase</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="#" data-section="dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-section="estoque">Estoque</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-section="cadastro-placa">Cadastrar Placa</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-section="movimentar-estoque">Movimentar Estoque</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-section="historico-lancamentos">Histórico de Lançamentos</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div id="alert-atualizacao" class="alert alert-info alert-dismissible fade show" style="display: none; margin: 0; border-radius: 0;">
+        <div class="container">
+            <span id="mensagem-atualizacao"></span>
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    </div>
+
+    <!-- Modal para editar lançamento -->
+    <div class="modal fade" id="modalEditarLancamento" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Editar Lançamento</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="form-editar-lancamento">
+                        <input type="hidden" id="editar-lancamento-id">
+                        <div class="mb-3">
+                            <label for="editar-quantidade" class="form-label">Quantidade</label>
+                            <input type="number" class="form-control" id="editar-quantidade" min="1" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editar-responsavel" class="form-label">Responsável</label>
+                            <input type="text" class="form-control" id="editar-responsavel" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editar-finalidade" class="form-label">Finalidade</label>
+                            <select class="form-select" id="editar-finalidade" required>
+                                <option value="">Selecione a finalidade</option>
+                                <option value="rancho_producao">Rancho de Produção</option>
+                                <option value="master">Master</option>
+                                <option value="retrabalho_adequacao">Retrabalho de adequação</option>
+                                <option value="adequacao">Adequação</option>
+                                <option value="devolucao_estoque">Devolução ao Estoque</option>
+                                <option value="sucata">Sucata</option>
+                                <option value="outros">Outros</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editar-data" class="form-label">Data</label>
+                            <input type="date" class="form-control" id="editar-data" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="salvarEdicaoLancamento()">
+                        <span id="btn-salvar-text">Salvar Alterações</span>
+                        <span id="btn-salvar-loading" class="loading-spinner" style="display: none;"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <section id="dashboard" class="page-section active-section">
+        <div class="container my-5">
+            <div class="header-container">
+                <h2 class="mb-4">Dashboard de Placas Eletrônicas</h2>
+                <div class="subtitle">Laboratório de Eletrônica</div>
+            </div>
+            
+            <div class="row mb-5">
+                <div class="col-md-3 mb-3">
+                    <div class="card dashboard-card text-white bg-dark" onclick="irParaEstoque()">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Total de Placas</h5>
+                                    <h2 id="total-placas" class="card-text">0</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-motherboard" style="font-size: 2rem; color: var(--primary-color);"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card dashboard-card text-white bg-dark" onclick="irParaEstoque()">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Tipos de Placas</h5>
+                                    <h2 id="tipos-placas" class="card-text">0</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-collection" style="font-size: 2rem; color: var(--primary-color);"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card dashboard-card text-white bg-dark" onclick="irParaEstoque()">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Baixo Estoque</h5>
+                                    <h2 id="baixo-estoque" class="card-text">0</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-exclamation-triangle" style="font-size: 2rem; color: #ffc107;"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3 mb-3">
+                    <div class="card dashboard-card text-white bg-dark" onclick="irParaEstoque()">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h5 class="card-title">Sem Estoque</h5>
+                                    <h2 id="sem-estoque" class="card-text">0</h2>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="bi bi-x-circle" style="font-size: 2rem; color: #dc3545;"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="card-title mb-0">Visualização de Estoque</h5>
+                            <div>
+                                <select id="tipo-grafico" class="form-select form-select-sm" style="width: auto;">
+                                    <option value="bar">Gráfico de Barras</option>
+                                    <option value="line">Gráfico de Linhas</option>
+                                    <option value="pie">Gráfico de Pizza</option>
+                                    <option value="doughnut">Gráfico de Rosca</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <canvas id="estoqueChart" height="250"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Alertas de Estoque</h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="alertas-estoque">
+                                <div class="alert alert-info">Carregando dados...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="estoque" class="page-section">
+        <div class="container my-5">
+            <div class="header-container">
+                <h2 class="mb-4">Estoque de Placas Eletrônicas</h2>
+                <div class="subtitle">Laboratório de Eletrônica</div>
+            </div>
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Lista de Placas em Estoque</h5>
+                    <button class="btn btn-primary" onclick="abrirCadastroPlaca()">
+                        <i class="bi bi-plus-circle"></i> Nova Placa
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Código</th>
+                                    <th>Descrição</th>
+                                    <th>Quantidade</th>
+                                    <th>Localização</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-estoque">
+                                <tr>
+                                    <td colspan="6" class="text-center">Nenhuma placa cadastrada</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="cadastro-placa" class="page-section">
+        <div class="container my-5">
+            <div class="header-container">
+                <h2 class="mb-4" id="titulo-cadastro-placa">Cadastrar Nova Placa</h2>
+                <div class="subtitle">Laboratório de Eletrônica</div>
+            </div>
+            <div class="card">
+                <div class="card-body">
+                    <form id="form-placa">
+                        <input type="hidden" id="placa-id">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="codigo" class="form-label">Código da Placa *</label>
+                                <input type="text" class="form-control" id="codigo" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="descricao" class="form-label">Descrição *</label>
+                                <input type="text" class="form-control" id="descricao" required>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="quantidade" class="form-label">Quantidade Inicial *</label>
+                                <input type="number" class="form-control" id="quantidade" min="0" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="localizacao" class="form-label">Localização</label>
+                                <input type="text" class="form-control" id="localizacao">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="observacoes" class="form-label">Observações</label>
+                                <textarea class="form-control" id="observacoes" rows="3"></textarea>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="cancelarCadastroPlaca()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" id="btn-salvar-placa">
+                                <span id="btn-placa-text">Salvar Placa</span>
+                                <span id="btn-placa-loading" class="loading-spinner" style="display: none;"></span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="movimentar-estoque" class="page-section">
+        <div class="container my-5">
+            <div class="header-container">
+                <h2 class="mb-4">Movimentar Estoque</h2>
+                <div class="subtitle">Laboratório de Eletrônica</div>
+            </div>
+            
+            <!-- Formulário de Movimentação -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">Registrar Nova Movimentação</h5>
+                </div>
+                <div class="card-body">
+                    <form id="form-movimentacao">
+                        <div class="row mb-3">
+                            <div class="col-md-4">
+                                <label for="placa-select" class="form-label">Placa *</label>
+                                <select class="form-select" id="placa-select" required>
+                                    <option value="">Selecione uma placa</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="tipo-movimentacao" class="form-label">Tipo de Movimentação *</label>
+                                <select class="form-select" id="tipo-movimentacao" required>
+                                    <option value="entrada">Entrada</option>
+                                    <option value="saida">Saída</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label for="quantidade-mov" class="form-label">Quantidade *</label>
+                                <input type="number" class="form-control" id="quantidade-mov" min="1" required>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="responsavel" class="form-label">Responsável *</label>
+                                <input type="text" class="form-control" id="responsavel" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="data-movimentacao" class="form-label">Data</label>
+                                <input type="date" class="form-control" id="data-movimentacao">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="finalidade" class="form-label">Finalidade *</label>
+                                <select class="form-select" id="finalidade" required>
+                                    <option value="">Selecione a finalidade</option>
+                                    <option value="rancho_producao">Rancho de Produção</option>
+                                    <option value="master">Master</option>
+                                    <option value="retrabalho_adequacao">Retrabalho de adequação</option>
+                                    <option value="adequacao">Adequação</option>
+                                    <option value="devolucao_estoque">Devolução ao Estoque</option>
+                                    <option value="sucata">Sucata</option>
+                                    <option value="outros">Outros</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="button" class="btn btn-secondary me-2" onclick="cancelarMovimentacao()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" id="btn-registrar-movimentacao">
+                                <span id="btn-movimentacao-text">Registrar Movimentação</span>
+                                <span id="btn-movimentacao-loading" class="loading-spinner" style="display: none;"></span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="historico-lancamentos" class="page-section">
+        <div class="container my-5">
+            <div class="header-container">
+                <h2 class="mb-4">Histórico de Lançamentos</h2>
+                <div class="subtitle">Laboratório de Eletrônica</div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Registros de Entradas e Saídas</h5>
+                    <span class="badge bg-primary" id="total-registros-historico">0 registros</span>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Tipo</th>
+                                    <th>Placa</th>
+                                    <th>Quantidade</th>
+                                    <th>Responsável</th>
+                                    <th>Finalidade</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabela-historico-completo">
+                                <tr>
+                                    <td colspan="7" class="text-center">Nenhum lançamento registrado</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        // ========== CONFIGURAÇÃO SUPABASE ATUALIZADA ==========
+        const SUPABASE_URL = 'https://ypqmkhfkoilccygnyotd.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlwcW1raGZrb2lsY2N5Z255b3RkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NzkzOTcsImV4cCI6MjA3NjU1NTM5N30.rXrivRB4YmElkyBx9_vThDjH4aguM9q3HfY07mU4DxA';
+
+        // Inicializar Supabase
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // Sistema de armazenamento local (fallback)
+        const STORAGE_KEYS = {
+            PLACAS: 'controle_placas_estoque',
+            HISTORICO: 'controle_placas_historico'
+        };
+
+        // Variáveis globais
+        let placas = [];
+        let historicoLancamentos = [];
+        let usandoSupabase = false;
+
+        // Mapeamento de finalidades para nomes amigáveis
+        const FINALIDADES = {
+            'rancho_producao': 'Rancho de Produção',
+            'master': 'Master',
+            'retrabalho_adequacao': 'Retrabalho de adequação',
+            'adequacao': 'Adequação',
+            'devolucao_estoque': 'Devolução ao Estoque',
+            'sucata': 'Sucata',
+            'outros': 'Outros'
+        };
+
+        // Limite para estoque baixo
+        const LIMITE_ESTOQUE_BAIXO = 10;
+
+        // ========== FUNÇÕES DE TEMPO REAL ==========
+
+        // Função para escutar mudanças nas placas
+        function configurarRealtimePlacas() {
+            if (!usandoSupabase) return;
+            
+            console.log('🔔 Iniciando escuta de tempo real para placas...');
+            
+            const subscription = supabase
+                .channel('placas-changes')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*', // INSERT, UPDATE, DELETE
+                        schema: 'public',
+                        table: 'placas'
+                    },
+                    (payload) => {
+                        console.log('🔄 Mudança detectada em placas:', payload);
+                        mostrarMensagem('📦 Estoque atualizado em tempo real!', 'info');
+                        // Recarrega os dados para refletir as mudanças
+                        carregarDados();
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Escuta de tempo real para placas ativada');
+                    }
+                });
+        }
+
+        // Função para escutar mudanças no histórico
+        function configurarRealtimeHistorico() {
+            if (!usandoSupabase) return;
+            
+            console.log('🔔 Iniciando escuta de tempo real para histórico...');
+            
+            const subscription = supabase
+                .channel('historico-changes')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: '*', // INSERT, UPDATE, DELETE
+                        schema: 'public',
+                        table: 'historico_lancamentos'
+                    },
+                    (payload) => {
+                        console.log('🔄 Mudança detectada no histórico:', payload);
+                        mostrarMensagem('📋 Histórico atualizado em tempo real!', 'info');
+                        // Recarrega os dados para refletir as mudanças
+                        carregarDados();
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Escuta de tempo real para histórico ativada');
+                    }
+                });
+        }
+
+        // Função para iniciar todas as subscriptions
+        function iniciarRealtime() {
+            if (!usandoSupabase) {
+                console.log('🔕 Modo offline - Realtime desativado');
+                return;
+            }
+            
+            try {
+                configurarRealtimePlacas();
+                configurarRealtimeHistorico();
+                console.log('✅ Sistema de tempo real configurado com sucesso!');
+                mostrarMensagem('✅ Conectado em tempo real - atualizações automáticas ativas', 'success');
+            } catch (error) {
+                console.error('❌ Erro ao configurar realtime:', error);
+                mostrarMensagem('❌ Erro na conexão em tempo real', 'warning');
+            }
+        }
+
+        // Função para mostrar mensagens
+        function mostrarMensagem(mensagem, tipo) {
+            const alert = document.getElementById('alert-atualizacao');
+            const mensagemElem = document.getElementById('mensagem-atualizacao');
+            
+            alert.className = `alert alert-${tipo} alert-dismissible fade show`;
+            mensagemElem.textContent = mensagem;
+            alert.style.display = 'block';
+            
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 4000);
+        }
+
+        // Função para atualizar status da conexão
+        function atualizarStatusConexao(conectado) {
+            const statusElement = document.getElementById('status-conexao');
+            const modoElement = document.getElementById('modo-conexao');
+            
+            if (conectado) {
+                statusElement.innerHTML = '<i class="bi bi-check-circle"></i> Conectado (Tempo Real)';
+                statusElement.className = 'status-online';
+                modoElement.textContent = 'Supabase';
+                usandoSupabase = true;
+            } else {
+                statusElement.innerHTML = '<i class="bi bi-x-circle"></i> Modo Local (Offline)';
+                statusElement.className = 'status-offline';
+                modoElement.textContent = 'LocalStorage';
+                usandoSupabase = false;
+            }
+        }
+
+        // Função para testar conexão com Supabase
+        async function testarConexaoSupabase() {
+            try {
+                const { data, error } = await supabase
+                    .from('placas')
+                    .select('count')
+                    .limit(1);
+                
+                if (error) throw error;
+                return true;
+            } catch (error) {
+                console.warn('❌ Supabase offline, usando localStorage:', error.message);
+                return false;
+            }
+        }
+
+        // Função para ir para a seção de estoque
+        function irParaEstoque() {
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelector('.nav-link[data-section="estoque"]').classList.add('active');
+            document.querySelectorAll('.page-section').forEach(section => {
+                section.classList.remove('active-section');
+            });
+            document.getElementById('estoque').classList.add('active-section');
+        }
+
+        // Função para obter data atual
+        function obterDataAtual() {
+            return new Date().toISOString().split('T')[0];
+        }
+
+        // Sistema de armazenamento local (fallback)
+        function salvarNoLocalStorage(chave, dados) {
+            localStorage.setItem(chave, JSON.stringify(dados));
+        }
+
+        function carregarDoLocalStorage(chave) {
+            const dados = localStorage.getItem(chave);
+            return dados ? JSON.parse(dados) : [];
+        }
+
+        // ========== FUNÇÕES SUPABASE ==========
+
+        // Carregar placas do Supabase
+        async function carregarPlacasSupabase() {
+            try {
+                const { data, error } = await supabase
+                    .from('placas')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+                
+                if (error) throw error;
+                return data || [];
+            } catch (error) {
+                console.error('❌ Erro ao carregar placas:', error);
+                throw error;
+            }
+        }
+
+        // Carregar histórico do Supabase
+        async function carregarHistoricoSupabase() {
+            try {
+                const { data, error } = await supabase
+                    .from('historico_lancamentos')
+                    .select('*')
+                    .order('data', { ascending: false });
+                
+                if (error) throw error;
+                return data || [];
+            } catch (error) {
+                console.error('❌ Erro ao carregar histórico:', error);
+                throw error;
+            }
+        }
+
+        // Salvar placa no Supabase
+        async function salvarPlacaSupabase(placaData) {
+            try {
+                let data, error;
+                
+                if (placaData.id) {
+                    // Atualizar placa existente
+                    ({ data, error } = await supabase
+                        .from('placas')
+                        .update(placaData)
+                        .eq('id', placaData.id));
+                } else {
+                    // Inserir nova placa
+                    ({ data, error } = await supabase
+                        .from('placas')
+                        .insert([placaData])
+                        .select());
+                }
+                
+                if (error) throw error;
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao salvar placa no Supabase:', error);
+                throw error;
+            }
+        }
+
+        // Salvar movimentação no Supabase
+        async function salvarMovimentacaoSupabase(dadosMovimentacao) {
+            try {
+                const { data, error } = await supabase
+                    .from('historico_lancamentos')
+                    .insert([{
+                        data: dadosMovimentacao.data,
+                        tipo: dadosMovimentacao.tipo,
+                        codigo: dadosMovimentacao.codigo,
+                        descricao: dadosMovimentacao.descricao,
+                        quantidade: dadosMovimentacao.quantidade,
+                        responsavel: dadosMovimentacao.responsavel,
+                        finalidade: dadosMovimentacao.finalidade
+                    }])
+                    .select();
+                
+                if (error) throw error;
+                return data;
+            } catch (error) {
+                console.error('❌ Erro ao salvar movimentação no Supabase:', error);
+                throw error;
+            }
+        }
+
+        // Atualizar saldo da placa no Supabase
+        async function atualizarSaldoPlacaSupabase(placaId, novaQuantidade) {
+            try {
+                const { data, error } = await supabase
+                    .from('placas')
+                    .update({ quantidade: novaQuantidade })
+                    .eq('id', placaId);
+                
+                if (error) throw error;
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao atualizar saldo no Supabase:', error);
+                throw error;
+            }
+        }
+
+        // Excluir placa do Supabase
+        async function excluirPlacaSupabase(id) {
+            try {
+                const { error } = await supabase
+                    .from('placas')
+                    .delete()
+                    .eq('id', id);
+                
+                if (error) throw error;
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao excluir placa do Supabase:', error);
+                throw error;
+            }
+        }
+
+        // Excluir lançamento do Supabase
+        async function excluirLancamentoSupabase(id) {
+            try {
+                const { error } = await supabase
+                    .from('historico_lancamentos')
+                    .delete()
+                    .eq('id', id);
+                
+                if (error) throw error;
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao excluir lançamento do Supabase:', error);
+                throw error;
+            }
+        }
+
+        // ========== FUNÇÕES PRINCIPAIS ==========
+
+        // Carregar dados iniciais
+        async function carregarDados() {
+            try {
+                const conexaoAtiva = await testarConexaoSupabase();
+                atualizarStatusConexao(conexaoAtiva);
+                
+                if (conexaoAtiva) {
+                    // Usar Supabase
+                    placas = await carregarPlacasSupabase();
+                    historicoLancamentos = await carregarHistoricoSupabase();
+                    console.log(`📦 ${placas.length} placas carregadas do Supabase`);
+                    console.log(`📋 ${historicoLancamentos.length} lançamentos carregados do Supabase`);
+                    
+                    // 🔥 INICIAR TEMPO REAL APÓS CARREGAR DADOS
+                    iniciarRealtime();
+                    
+                } else {
+                    // Usar localStorage
+                    placas = carregarDoLocalStorage(STORAGE_KEYS.PLACAS);
+                    historicoLancamentos = carregarDoLocalStorage(STORAGE_KEYS.HISTORICO);
+                    console.log(`📦 ${placas.length} placas carregadas do localStorage`);
+                    console.log(`📋 ${historicoLancamentos.length} lançamentos carregados do localStorage`);
+                }
+                
+                atualizarTabelaEstoque();
+                atualizarDashboard();
+                atualizarSelectPlacas();
+                atualizarTabelaHistorico();
+                
+            } catch (error) {
+                console.error('❌ Erro ao carregar dados:', error);
+                mostrarMensagem('❌ Erro ao carregar dados', 'danger');
+            }
+        }
+
+        // Salvar placa
+        async function salvarPlaca(placaData) {
+            try {
+                mostrarLoading('btn-placa');
+                
+                if (usandoSupabase) {
+                    await salvarPlacaSupabase(placaData);
+                } else {
+                    // LocalStorage
+                    if (placaData.id) {
+                        const index = placas.findIndex(p => p.id === placaData.id);
+                        if (index !== -1) {
+                            placas[index] = { ...placaData };
+                        }
+                    } else {
+                        const novaPlaca = {
+                            ...placaData,
+                            id: Date.now().toString(),
+                            created_at: new Date().toISOString()
+                        };
+                        placas.push(novaPlaca);
+                    }
+                    salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+                }
+                
+                esconderLoading('btn-placa');
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao salvar placa:', error);
+                esconderLoading('btn-placa');
+                mostrarMensagem('❌ Erro ao salvar placa', 'danger');
+                return false;
+            }
+        }
+
+        // Excluir placa completamente
+        async function excluirPlaca(id) {
+            if (confirm('Tem certeza que deseja excluir completamente esta placa? Esta ação removerá todo o saldo e o cadastro permanentemente e não pode ser desfeita.')) {
+                try {
+                    if (usandoSupabase) {
+                        await excluirPlacaSupabase(id);
+                    } else {
+                        const index = placas.findIndex(p => p.id === id);
+                        if (index !== -1) {
+                            placas.splice(index, 1);
+                            salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+                        }
+                    }
+                    
+                    carregarDados();
+                    mostrarMensagem('✅ Placa excluída permanentemente com sucesso!', 'success');
+                    return true;
+                } catch (error) {
+                    console.error('❌ Erro ao excluir placa:', error);
+                    mostrarMensagem('❌ Erro ao excluir placa', 'danger');
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        // ========== FUNÇÃO CORRIGIDA - ATUALIZAR SALDO ==========
+        async function atualizarSaldoPlaca(placaId, tipo, quantidade) {
+            try {
+                console.log('🔍 [DEBUG] Buscando placa com ID:', placaId, 'Tipo:', typeof placaId);
+                
+                // Converte o ID para o tipo correto (Supabase usa números, localStorage usa strings)
+                let idParaBuscar;
+                
+                if (usandoSupabase) {
+                    // No Supabase, IDs são números - converte para número
+                    idParaBuscar = Number(placaId);
+                } else {
+                    // No localStorage, IDs são strings - mantém como string
+                    idParaBuscar = placaId;
+                }
+                
+                console.log('🔄 [DEBUG] ID convertido:', idParaBuscar, 'Tipo:', typeof idParaBuscar);
+                
+                // Busca a placa com diferentes estratégias
+                const placaIndex = placas.findIndex(p => {
+                    // Comparação flexível para lidar com tipos diferentes
+                    return p.id == idParaBuscar || 
+                           String(p.id) === String(placaId) ||
+                           p.id === placaId;
+                });
+                
+                console.log('📋 [DEBUG] Índice encontrado:', placaIndex);
+                
+                if (placaIndex === -1) {
+                    console.log('❌ [DEBUG] Placa NÃO encontrada!');
+                    console.log('📊 [DEBUG] IDs disponíveis:', placas.map(p => ({
+                        id: p.id, 
+                        tipo: typeof p.id,
+                        codigo: p.codigo
+                    })));
+                    return false;
+                }
+                
+                let novaQuantidade = parseInt(placas[placaIndex].quantidade);
+                
+                if (tipo === 'entrada') {
+                    novaQuantidade += parseInt(quantidade);
+                } else if (tipo === 'saida') {
+                    novaQuantidade -= parseInt(quantidade);
+                    if (novaQuantidade < 0) novaQuantidade = 0;
+                }
+                
+                placas[placaIndex].quantidade = novaQuantidade;
+                
+                if (usandoSupabase) {
+                    await atualizarSaldoPlacaSupabase(placas[placaIndex].id, novaQuantidade);
+                } else {
+                    salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+                }
+                
+                console.log(`✅ Saldo atualizado: ${placas[placaIndex].codigo} → ${novaQuantidade}`);
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao atualizar saldo:', error);
+                return false;
+            }
+        }
+
+        // ========== FUNÇÃO CORRIGIDA - SALVAR NO HISTÓRICO ==========
+        async function salvarNoHistorico(dados) {
+            try {
+                console.log('💾 Salvando no histórico:', dados);
+                
+                if (usandoSupabase) {
+                    // Para Supabase, não enviamos ID (é auto-increment)
+                    const resultado = await salvarMovimentacaoSupabase(dados);
+                    
+                    if (resultado) {
+                        console.log('✅ Lançamento salvo no Supabase:', resultado);
+                        
+                        // ATUALIZAÇÃO IMPORTANTE: Recarrega o histórico completo do Supabase
+                        historicoLancamentos = await carregarHistoricoSupabase();
+                        console.log('🔄 Histórico recarregado do Supabase:', historicoLancamentos.length, 'registros');
+                    }
+                    
+                } else {
+                    // Para localStorage
+                    const novoLancamento = {
+                        ...dados,
+                        id: Date.now().toString(),
+                        created_at: new Date().toISOString()
+                    };
+                    
+                    historicoLancamentos.unshift(novoLancamento);
+                    salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+                    console.log('✅ Lançamento salvo no localStorage');
+                }
+                
+                // ATUALIZA A INTERFACE IMEDIATAMENTE
+                atualizarTabelaHistorico();
+                
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao salvar no histórico:', error);
+                return false;
+            }
+        }
+
+        // Atualizar tabela do histórico
+        function atualizarTabelaHistorico() {
+            const tabela = document.getElementById('tabela-historico-completo');
+            const totalRegistros = document.getElementById('total-registros-historico');
+            
+            totalRegistros.textContent = `${historicoLancamentos.length} registros`;
+            
+            if (historicoLancamentos.length === 0) {
+                tabela.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum lançamento registrado</td></tr>';
+                return;
+            }
+            
+            let html = '';
+            historicoLancamentos.forEach(lancamento => {
+                const tipoBadge = lancamento.tipo === 'entrada' ? 
+                    '<span class="badge entrada-badge">Entrada</span>' : 
+                    '<span class="badge saida-badge">Saída</span>';
+                
+                const dataFormatada = new Date(lancamento.data).toLocaleDateString('pt-BR');
+                const finalidadeTexto = FINALIDADES[lancamento.finalidade] || lancamento.finalidade;
+                
+                html += `
+                    <tr>
+                        <td>${dataFormatada}</td>
+                        <td>${tipoBadge}</td>
+                        <td><strong>${lancamento.codigo}</strong> - ${lancamento.descricao}</td>
+                        <td>${lancamento.quantidade}</td>
+                        <td>${lancamento.responsavel}</td>
+                        <td>${finalidadeTexto}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-sm btn-outline-primary me-1" onclick="editarLancamento('${lancamento.id}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirLancamento('${lancamento.id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            
+            tabela.innerHTML = html;
+        }
+
+        // Editar lançamento
+        function editarLancamento(id) {
+            const lancamento = historicoLancamentos.find(l => l.id === id);
+            if (lancamento) {
+                document.getElementById('editar-lancamento-id').value = lancamento.id;
+                document.getElementById('editar-quantidade').value = lancamento.quantidade;
+                document.getElementById('editar-responsavel').value = lancamento.responsavel;
+                document.getElementById('editar-finalidade').value = lancamento.finalidade;
+                document.getElementById('editar-data').value = lancamento.data;
+                
+                const modal = new bootstrap.Modal(document.getElementById('modalEditarLancamento'));
+                modal.show();
+            }
+        }
+
+        // Salvar edição do lançamento
+        async function salvarEdicaoLancamento() {
+            const id = document.getElementById('editar-lancamento-id').value;
+            const novaQuantidade = parseInt(document.getElementById('editar-quantidade').value);
+            const novoResponsavel = document.getElementById('editar-responsavel').value;
+            const novaFinalidade = document.getElementById('editar-finalidade').value;
+            const novaData = document.getElementById('editar-data').value;
+            
+            if (!novaQuantidade || novaQuantidade <= 0) {
+                mostrarMensagem('❌ Quantidade deve ser maior que zero!', 'danger');
+                return;
+            }
+            
+            if (!novoResponsavel) {
+                mostrarMensagem('❌ Responsável é obrigatório!', 'danger');
+                return;
+            }
+            
+            if (!novaFinalidade) {
+                mostrarMensagem('❌ Finalidade é obrigatória!', 'danger');
+                return;
+            }
+            
+            if (!novaData) {
+                mostrarMensagem('❌ Data é obrigatória!', 'danger');
+                return;
+            }
+            
+            try {
+                mostrarLoading('btn-salvar');
+                
+                const index = historicoLancamentos.findIndex(l => l.id === id);
+                if (index !== -1) {
+                    // Atualiza apenas os dados do histórico, sem alterar o saldo
+                    historicoLancamentos[index].quantidade = novaQuantidade;
+                    historicoLancamentos[index].responsavel = novoResponsavel;
+                    historicoLancamentos[index].finalidade = novaFinalidade;
+                    historicoLancamentos[index].data = novaData;
+                    
+                    if (usandoSupabase) {
+                        // Atualizar no Supabase
+                        const { error } = await supabase
+                            .from('historico_lancamentos')
+                            .update({
+                                quantidade: novaQuantidade,
+                                responsavel: novoResponsavel,
+                                finalidade: novaFinalidade,
+                                data: novaData
+                            })
+                            .eq('id', id);
+                        
+                        if (error) throw error;
+                    } else {
+                        salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+                    }
+                    
+                    atualizarTabelaHistorico();
+                    
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditarLancamento'));
+                    modal.hide();
+                    
+                    mostrarMensagem('✅ Lançamento atualizado com sucesso!', 'success');
+                }
+            } catch (error) {
+                console.error('❌ Erro ao atualizar lançamento:', error);
+                mostrarMensagem('❌ Erro ao atualizar lançamento', 'danger');
+            } finally {
+                esconderLoading('btn-salvar');
+            }
+        }
+
+        // Excluir lançamento
+        async function excluirLancamento(id) {
+            if (confirm('Tem certeza que deseja excluir este lançamento? Esta ação não pode ser desfeita.')) {
+                try {
+                    if (usandoSupabase) {
+                        await excluirLancamentoSupabase(id);
+                    } else {
+                        const index = historicoLancamentos.findIndex(l => l.id === id);
+                        if (index !== -1) {
+                            historicoLancamentos.splice(index, 1);
+                            salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+                        }
+                    }
+                    
+                    carregarDados();
+                    mostrarMensagem('✅ Lançamento excluído com sucesso!', 'success');
+                } catch (error) {
+                    console.error('❌ Erro ao excluir lançamento:', error);
+                    mostrarMensagem('❌ Erro ao excluir lançamento', 'danger');
+                }
+            }
+        }
+
+        // Funções auxiliares para loading
+        function mostrarLoading(tipo) {
+            document.getElementById(`${tipo}-text`).style.display = 'none';
+            document.getElementById(`${tipo}-loading`).style.display = 'inline-block';
+        }
+
+        function esconderLoading(tipo) {
+            document.getElementById(`${tipo}-text`).style.display = 'inline';
+            document.getElementById(`${tipo}-loading`).style.display = 'none';
+        }
+
+        // Formulário de movimentação
+        document.getElementById('form-movimentacao').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const placaId = document.getElementById('placa-select').value;
+            const tipo = document.getElementById('tipo-movimentacao').value;
+            const quantidade = parseInt(document.getElementById('quantidade-mov').value);
+            const responsavel = document.getElementById('responsavel').value;
+            const finalidade = document.getElementById('finalidade').value;
+            let data = document.getElementById('data-movimentacao').value;
+            
+            if (!data) data = obterDataAtual();
+            if (!placaId) {
+                mostrarMensagem('❌ Selecione uma placa!', 'danger');
+                return;
+            }
+            if (!finalidade) {
+                mostrarMensagem('❌ Selecione a finalidade!', 'danger');
+                return;
+            }
+            
+            const placa = placas.find(p => p.id == placaId);
+            if (!placa) {
+                mostrarMensagem('❌ Placa não encontrada!', 'danger');
+                return;
+            }
+            
+            if (tipo === 'saida' && quantidade > placa.quantidade) {
+                mostrarMensagem('❌ Quantidade de saída maior que o estoque disponível!', 'danger');
+                return;
+            }
+            
+            try {
+                mostrarLoading('btn-movimentacao');
+                
+                // 1. ATUALIZAR SALDO
+                const saldoAtualizado = await atualizarSaldoPlaca(placaId, tipo, quantidade);
+                
+                if (saldoAtualizado) {
+                    // 2. SALVAR NO HISTÓRICO
+                    const dadosHistorico = {
+                        data: data,
+                        tipo: tipo,
+                        codigo: placa.codigo,
+                        descricao: placa.descricao,
+                        quantidade: quantidade,
+                        responsavel: responsavel,
+                        finalidade: finalidade
+                    };
+                    
+                    await salvarNoHistorico(dadosHistorico);
+                    
+                    // 3. ATUALIZAR INTERFACE
+                    await carregarDados();
+                    
+                    document.getElementById('form-movimentacao').reset();
+                    document.getElementById('data-movimentacao').value = obterDataAtual();
+                    mostrarMensagem('✅ Movimentação registrada com sucesso!', 'success');
+                }
+            } catch (error) {
+                console.error('❌ Erro:', error);
+                mostrarMensagem('❌ Erro ao registrar movimentação', 'danger');
+            } finally {
+                esconderLoading('btn-movimentacao');
+            }
+        });
+
+        // Formulário de placa
+        document.getElementById('form-placa').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const placaData = {
+                codigo: document.getElementById('codigo').value,
+                descricao: document.getElementById('descricao').value,
+                quantidade: parseInt(document.getElementById('quantidade').value),
+                localizacao: document.getElementById('localizacao').value,
+                observacoes: document.getElementById('observacoes').value
+            };
+            
+            const id = document.getElementById('placa-id').value;
+            if (id) placaData.id = id;
+            
+            const sucesso = await salvarPlaca(placaData);
+            if (sucesso) {
+                document.getElementById('form-placa').reset();
+                mostrarMensagem('✅ Placa salva com sucesso!', 'success');
+                document.querySelector('.nav-link[data-section="estoque"]').click();
+                await carregarDados();
+            }
+        });
+
+        // Funções de navegação
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                const sectionId = this.getAttribute('data-section');
+                document.querySelectorAll('.page-section').forEach(section => {
+                    section.classList.remove('active-section');
+                });
+                document.getElementById(sectionId).classList.add('active-section');
+            });
+        });
+
+        function abrirCadastroPlaca() {
+            document.querySelector('.nav-link[data-section="cadastro-placa"]').click();
+            document.getElementById('form-placa').reset();
+            document.getElementById('placa-id').value = '';
+        }
+
+        function cancelarCadastroPlaca() {
+            document.querySelector('.nav-link[data-section="estoque"]').click();
+        }
+
+        function cancelarMovimentacao() {
+            document.getElementById('form-movimentacao').reset();
+            document.getElementById('data-movimentacao').value = obterDataAtual();
+        }
+
+        // Atualizar tabela de estoque
+        function atualizarTabelaEstoque() {
+            const tabela = document.getElementById('tabela-estoque');
+            if (placas.length === 0) {
+                tabela.innerHTML = '<tr><td colspan="6" class="text-center">Nenhuma placa cadastrada</td></tr>';
+                return;
+            }
+            
+            tabela.innerHTML = '';
+            placas.forEach(placa => {
+                const tr = document.createElement('tr');
+                tr.className = placa.quantidade === 0 ? 'out-of-stock' : (placa.quantidade <= LIMITE_ESTOQUE_BAIXO ? 'low-stock' : '');
+                
+                let status = placa.quantidade === 0 ? 
+                    '<span class="badge bg-danger">Sem Estoque</span>' : 
+                    placa.quantidade <= LIMITE_ESTOQUE_BAIXO ? 
+                    '<span class="badge bg-warning">Estoque Baixo</span>' : 
+                    '<span class="badge bg-success">Normal</span>';
+                
+                tr.innerHTML = `
+                    <td>${placa.codigo}</td>
+                    <td>${placa.descricao}</td>
+                    <td>${placa.quantidade}</td>
+                    <td>${placa.localizacao || '-'}</td>
+                    <td>${status}</td>
+                    <td class="action-buttons">
+                        <button class="btn btn-sm btn-outline-danger" onclick="excluirPlaca('${placa.id}')">
+                            <i class="bi bi-trash"></i> Excluir
+                        </button>
+                    </td>
+                `;
+                tabela.appendChild(tr);
+            });
+        }
+
+        // Atualizar dashboard
+        function atualizarDashboard() {
+            const totalPlacas = placas.reduce((total, placa) => total + placa.quantidade, 0);
+            const tiposPlacas = placas.length;
+            const baixoEstoque = placas.filter(p => p.quantidade > 0 && p.quantidade <= LIMITE_ESTOQUE_BAIXO).length;
+            const semEstoque = placas.filter(p => p.quantidade === 0).length;
+            
+            document.getElementById('total-placas').textContent = totalPlacas;
+            document.getElementById('tipos-placas').textContent = tiposPlacas;
+            document.getElementById('baixo-estoque').textContent = baixoEstoque;
+            document.getElementById('sem-estoque').textContent = semEstoque;
+            
+            atualizarGraficoEstoque();
+            atualizarAlertasEstoque();
+        }
+
+        // Atualizar gráfico
+        function atualizarGraficoEstoque() {
+            const ctx = document.getElementById('estoqueChart').getContext('2d');
+            const tipoGrafico = document.getElementById('tipo-grafico').value;
+            
+            if (window.estoqueChartInstance) {
+                window.estoqueChartInstance.destroy();
+            }
+            
+            const labels = placas.map(p => p.codigo);
+            const data = placas.map(p => p.quantidade);
+            const cores = placas.map(p => p.quantidade === 0 ? '#dc3545' : p.quantidade <= LIMITE_ESTOQUE_BAIXO ? '#ffc107' : '#00ff88');
+            
+            window.estoqueChartInstance = new Chart(ctx, {
+                type: tipoGrafico,
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Quantidade em Estoque',
+                        data: data,
+                        backgroundColor: cores,
+                        borderColor: '#333',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#f8f9fa' }
+                        }
+                    },
+                    scales: tipoGrafico === 'bar' || tipoGrafico === 'line' ? {
+                        y: { 
+                            beginAtZero: true,
+                            ticks: { color: '#f8f9fa' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        },
+                        x: {
+                            ticks: { color: '#f8f9fa' },
+                            grid: { color: 'rgba(255,255,255,0.1)' }
+                        }
+                    } : {}
+                }
+            });
+        }
+
+        // Atualizar alertas
+        function atualizarAlertasEstoque() {
+            const container = document.getElementById('alertas-estoque');
+            const baixoEstoque = placas.filter(p => p.quantidade > 0 && p.quantidade <= LIMITE_ESTOQUE_BAIXO);
+            const semEstoque = placas.filter(p => p.quantidade === 0);
+            
+            if (baixoEstoque.length === 0 && semEstoque.length === 0) {
+                container.innerHTML = '<div class="alert alert-success">Estoque em situação normal</div>';
+                return;
+            }
+            
+            container.innerHTML = '';
+            baixoEstoque.forEach(placa => {
+                container.innerHTML += `<div class="alert alert-warning">
+                    <strong>${placa.codigo}</strong> - ${placa.descricao}: Estoque baixo (${placa.quantidade} unidades)
+                </div>`;
+            });
+            
+            semEstoque.forEach(placa => {
+                container.innerHTML += `<div class="alert alert-danger">
+                    <strong>${placa.codigo}</strong> - ${placa.descricao}: Sem estoque
+                </div>`;
+            });
+        }
+
+        // Atualizar select de placas
+        function atualizarSelectPlacas() {
+            const select = document.getElementById('placa-select');
+            select.innerHTML = '<option value="">Selecione uma placa</option>';
+            placas.forEach(placa => {
+                const option = document.createElement('option');
+                option.value = placa.id;
+                option.textContent = `${placa.codigo} - ${placa.descricao} (${placa.quantidade} em estoque)`;
+                select.appendChild(option);
+            });
+        }
+
+        // Inicialização
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('data-movimentacao').value = obterDataAtual();
+            carregarDados();
+            
+            document.getElementById('tipo-grafico').addEventListener('change', function() {
+                atualizarGraficoEstoque();
+            });
+        });
+    </script>
+</body>
+</html>
