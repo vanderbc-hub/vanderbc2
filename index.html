@@ -420,7 +420,7 @@
                             <thead>
                                 <tr>
                                     <th>Código</th>
-                                    <th>Descrição</th>
+                                    <th>Descricao</th>
                                     <th>Quantidade</th>
                                     <th>Localização</th>
                                     <th>Status</th>
@@ -839,14 +839,14 @@
                 }
                 
                 if (error) throw error;
-                return true;
+                return data;
             } catch (error) {
                 console.error('❌ Erro ao salvar placa no Supabase:', error);
                 throw error;
             }
         }
 
-        // Salvar movimentação no Supabase
+        // Salvar movimentação no Supabase - FUNÇÃO CORRIGIDA
         async function salvarMovimentacaoSupabase(dadosMovimentacao) {
             try {
                 const { data, error } = await supabase
@@ -918,7 +918,7 @@
             }
         }
 
-        // ========== FUNÇÕES PRINCIPAIS ==========
+        // ========== FUNÇÕES PRINCIPAIS CORRIGIDAS ==========
 
         // Carregar dados iniciais
         async function carregarDados() {
@@ -955,13 +955,17 @@
             }
         }
 
-        // Salvar placa
+        // Salvar placa - FUNÇÃO CORRIGIDA
         async function salvarPlaca(placaData) {
             try {
                 mostrarLoading('btn-placa');
                 
                 if (usandoSupabase) {
-                    await salvarPlacaSupabase(placaData);
+                    const resultado = await salvarPlacaSupabase(placaData);
+                    if (resultado && !placaData.id) {
+                        // Se for uma nova placa, adiciona à lista local
+                        placas.unshift(resultado[0]);
+                    }
                 } else {
                     // LocalStorage
                     if (placaData.id) {
@@ -975,7 +979,7 @@
                             id: Date.now().toString(),
                             created_at: new Date().toISOString()
                         };
-                        placas.push(novaPlaca);
+                        placas.unshift(novaPlaca);
                     }
                     salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
                 }
@@ -1084,21 +1088,22 @@
             try {
                 console.log('💾 Salvando no histórico:', dados);
                 
+                let novoLancamento;
+                
                 if (usandoSupabase) {
-                    // Para Supabase, não enviamos ID (é auto-increment)
+                    // Para Supabase
                     const resultado = await salvarMovimentacaoSupabase(dados);
                     
-                    if (resultado) {
-                        console.log('✅ Lançamento salvo no Supabase:', resultado);
-                        
-                        // ATUALIZAÇÃO IMPORTANTE: Recarrega o histórico completo do Supabase
-                        historicoLancamentos = await carregarHistoricoSupabase();
-                        console.log('🔄 Histórico recarregado do Supabase:', historicoLancamentos.length, 'registros');
+                    if (resultado && resultado[0]) {
+                        novoLancamento = resultado[0];
+                        console.log('✅ Lançamento salvo no Supabase:', novoLancamento);
+                    } else {
+                        throw new Error('Nenhum dado retornado do Supabase');
                     }
                     
                 } else {
                     // Para localStorage
-                    const novoLancamento = {
+                    novoLancamento = {
                         ...dados,
                         id: Date.now().toString(),
                         created_at: new Date().toISOString()
@@ -1109,8 +1114,17 @@
                     console.log('✅ Lançamento salvo no localStorage');
                 }
                 
-                // ATUALIZA A INTERFACE IMEDIATAMENTE
-                atualizarTabelaHistorico();
+                // ATUALIZA A LISTA LOCAL E A INTERFACE
+                if (novoLancamento) {
+                    if (usandoSupabase) {
+                        // Para Supabase, recarrega o histórico completo para garantir sincronização
+                        historicoLancamentos = await carregarHistoricoSupabase();
+                    } else {
+                        // Para localStorage, já temos o novo lançamento na lista
+                        historicoLancamentos.unshift(novoLancamento);
+                    }
+                    atualizarTabelaHistorico();
+                }
                 
                 return true;
             } catch (error) {
@@ -1165,7 +1179,7 @@
 
         // Editar lançamento
         function editarLancamento(id) {
-            const lancamento = historicoLancamentos.find(l => l.id === id);
+            const lancamento = historicoLancamentos.find(l => l.id == id);
             if (lancamento) {
                 document.getElementById('editar-lancamento-id').value = lancamento.id;
                 document.getElementById('editar-quantidade').value = lancamento.quantidade;
@@ -1209,7 +1223,7 @@
             try {
                 mostrarLoading('btn-salvar');
                 
-                const index = historicoLancamentos.findIndex(l => l.id === id);
+                const index = historicoLancamentos.findIndex(l => l.id == id);
                 if (index !== -1) {
                     // Atualiza apenas os dados do histórico, sem alterar o saldo
                     historicoLancamentos[index].quantidade = novaQuantidade;
@@ -1256,7 +1270,7 @@
                     if (usandoSupabase) {
                         await excluirLancamentoSupabase(id);
                     } else {
-                        const index = historicoLancamentos.findIndex(l => l.id === id);
+                        const index = historicoLancamentos.findIndex(l => l.id == id);
                         if (index !== -1) {
                             historicoLancamentos.splice(index, 1);
                             salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
@@ -1333,14 +1347,18 @@
                         finalidade: finalidade
                     };
                     
-                    await salvarNoHistorico(dadosHistorico);
+                    const historicoSalvo = await salvarNoHistorico(dadosHistorico);
                     
-                    // 3. ATUALIZAR INTERFACE
-                    await carregarDados();
-                    
-                    document.getElementById('form-movimentacao').reset();
-                    document.getElementById('data-movimentacao').value = obterDataAtual();
-                    mostrarMensagem('✅ Movimentação registrada com sucesso!', 'success');
+                    if (historicoSalvo) {
+                        // 3. ATUALIZAR INTERFACE
+                        atualizarTabelaEstoque();
+                        atualizarDashboard();
+                        atualizarSelectPlacas();
+                        
+                        document.getElementById('form-movimentacao').reset();
+                        document.getElementById('data-movimentacao').value = obterDataAtual();
+                        mostrarMensagem('✅ Movimentação registrada com sucesso!', 'success');
+                    }
                 }
             } catch (error) {
                 console.error('❌ Erro:', error);
