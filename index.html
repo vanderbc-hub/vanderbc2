@@ -12,6 +12,9 @@
     <!-- Supabase -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     
+    <!-- SheetJS (para exportação Excel) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    
     <style>
         :root {
             --primary-color: #00ff88;
@@ -210,6 +213,19 @@
             font-weight: normal;
             margin: 0;
         }
+        
+        /* Botão de exportação */
+        .btn-export {
+            background-color: #28a745;
+            border-color: #28a745;
+            color: white;
+        }
+        
+        .btn-export:hover {
+            background-color: #218838;
+            border-color: #1e7e34;
+            color: white;
+        }
     </style>
 </head>
 <body>
@@ -405,6 +421,27 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Nova seção de exportação -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Exportação de Dados</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-export" onclick="exportarEstoqueExcel()">
+                                    <i class="bi bi-file-earmark-excel"></i> Exportar Estoque para Excel
+                                </button>
+                                <button class="btn btn-export" onclick="exportarHistoricoExcel()">
+                                    <i class="bi bi-file-earmark-excel"></i> Exportar Histórico para Excel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </section>
 
@@ -417,9 +454,14 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">Lista de Placas em Estoque</h5>
-                    <button class="btn btn-primary" onclick="abrirCadastroPlaca()">
-                        <i class="bi bi-plus-circle"></i> Nova Placa
-                    </button>
+                    <div>
+                        <button class="btn btn-export me-2" onclick="exportarEstoqueExcel()">
+                            <i class="bi bi-file-earmark-excel"></i> Exportar
+                        </button>
+                        <button class="btn btn-primary" onclick="abrirCadastroPlaca()">
+                            <i class="bi bi-plus-circle"></i> Nova Placa
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -576,7 +618,12 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0">Registros de Entradas e Saídas</h5>
-                    <span class="badge bg-primary" id="total-registros-historico">0 registros</span>
+                    <div>
+                        <button class="btn btn-export me-2" onclick="exportarHistoricoExcel()">
+                            <i class="bi bi-file-earmark-excel"></i> Exportar
+                        </button>
+                        <span class="badge bg-primary" id="total-registros-historico">0 registros</span>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -848,73 +895,264 @@
             }
         }
 
-        // ========== FUNÇÕES PRINCIPAIS ==========
+        // Atualizar lançamento no Supabase
+        async function atualizarLancamentoSupabase(dadosLancamento) {
+            try {
+                const { data, error } = await supabase
+                    .from('historico_lancamentos')
+                    .update({
+                        quantidade: dadosLancamento.quantidade,
+                        responsavel: dadosLancamento.responsavel,
+                        finalidade: dadosLancamento.finalidade,
+                        data: dadosLancamento.data
+                    })
+                    .eq('id', dadosLancamento.id)
+                    .select();
+                
+                if (error) throw error;
+                return data;
+            } catch (error) {
+                console.error('❌ Erro ao atualizar lançamento no Supabase:', error);
+                throw error;
+            }
+        }
 
-        // Carregar dados iniciais
+        // ========== FUNÇÕES LOCAIS ==========
+
+        // Salvar placa localmente
+        function salvarPlacaLocal(placaData) {
+            if (placaData.id) {
+                // Atualizar placa existente
+                const index = placas.findIndex(p => p.id === placaData.id);
+                if (index !== -1) {
+                    placas[index] = { ...placas[index], ...placaData };
+                }
+            } else {
+                // Adicionar nova placa
+                placaData.id = Date.now().toString();
+                placas.push(placaData);
+            }
+            
+            salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+            return [placaData];
+        }
+
+        // Salvar movimentação localmente
+        function salvarMovimentacaoLocal(dadosMovimentacao) {
+            const novoLancamento = {
+                id: Date.now().toString(),
+                data: dadosMovimentacao.data,
+                tipo: dadosMovimentacao.tipo,
+                codigo: dadosMovimentacao.codigo,
+                descricao: dadosMovimentacao.descricao,
+                quantidade: dadosMovimentacao.quantidade,
+                responsavel: dadosMovimentacao.responsavel,
+                finalidade: dadosMovimentacao.finalidade
+            };
+            
+            historicoLancamentos.unshift(novoLancamento);
+            salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+            return [novoLancamento];
+        }
+
+        // Atualizar saldo da placa localmente
+        function atualizarSaldoPlacaLocal(placaId, novaQuantidade) {
+            const placa = placas.find(p => p.id === placaId);
+            if (placa) {
+                placa.quantidade = novaQuantidade;
+                salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+                return true;
+            }
+            return false;
+        }
+
+        // Excluir placa localmente
+        function excluirPlacaLocal(id) {
+            placas = placas.filter(p => p.id !== id);
+            salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
+            return true;
+        }
+
+        // Excluir lançamento localmente
+        function excluirLancamentoLocal(id) {
+            historicoLancamentos = historicoLancamentos.filter(h => h.id !== id);
+            salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+            return true;
+        }
+
+        // Atualizar lançamento localmente
+        function atualizarLancamentoLocal(dadosLancamento) {
+            const index = historicoLancamentos.findIndex(h => h.id === dadosLancamento.id);
+            if (index !== -1) {
+                historicoLancamentos[index] = { ...historicoLancamentos[index], ...dadosLancamento };
+                salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
+                return [historicoLancamentos[index]];
+            }
+            return [];
+        }
+
+        // ========== FUNÇÕES UNIFICADAS ==========
+
+        // Carregar dados (tenta Supabase primeiro, depois localStorage)
         async function carregarDados() {
             try {
-                const conexaoAtiva = await testarConexaoSupabase();
-                atualizarStatusConexao(conexaoAtiva);
+                const conectado = await testarConexaoSupabase();
+                atualizarStatusConexao(conectado);
                 
-                if (conexaoAtiva) {
-                    // Usar Supabase
+                if (conectado) {
                     placas = await carregarPlacasSupabase();
                     historicoLancamentos = await carregarHistoricoSupabase();
-                    console.log(`📦 ${placas.length} placas carregadas do Supabase`);
-                    console.log(`📋 ${historicoLancamentos.length} lançamentos carregados do Supabase`);
                 } else {
-                    // Usar localStorage
                     placas = carregarDoLocalStorage(STORAGE_KEYS.PLACAS);
                     historicoLancamentos = carregarDoLocalStorage(STORAGE_KEYS.HISTORICO);
-                    console.log(`📦 ${placas.length} placas carregadas do localStorage`);
-                    console.log(`📋 ${historicoLancamentos.length} lançamentos carregados do localStorage`);
                 }
                 
                 atualizarTabelaEstoque();
                 atualizarDashboard();
+                atualizarHistoricoCompleto();
                 atualizarSelectPlacas();
-                atualizarTabelaHistorico();
                 
+                return true;
             } catch (error) {
                 console.error('❌ Erro ao carregar dados:', error);
-                mostrarMensagem('❌ Erro ao carregar dados', 'danger');
+                placas = carregarDoLocalStorage(STORAGE_KEYS.PLACAS);
+                historicoLancamentos = carregarDoLocalStorage(STORAGE_KEYS.HISTORICO);
+                atualizarStatusConexao(false);
+                atualizarTabelaEstoque();
+                atualizarDashboard();
+                atualizarHistoricoCompleto();
+                atualizarSelectPlacas();
+                return false;
             }
         }
 
-        // Configurar atualizações automáticas em tempo real
-        function configurarAtualizacoesTempoReal() {
-            // Limpar intervalo anterior se existir
-            if (intervaloAtualizacao) {
-                clearInterval(intervaloAtualizacao);
-            }
-            
-            // Atualizar a cada 5 segundos quando conectado ao Supabase
-            if (usandoSupabase) {
-                intervaloAtualizacao = setInterval(async () => {
-                    try {
-                        const novasPlacas = await carregarPlacasSupabase();
-                        const novoHistorico = await carregarHistoricoSupabase();
-                        
-                        // Verificar se houve mudanças
-                        if (JSON.stringify(novasPlacas) !== JSON.stringify(placas) || 
-                            JSON.stringify(novoHistorico) !== JSON.stringify(historicoLancamentos)) {
-                            
-                            placas = novasPlacas;
-                            historicoLancamentos = novoHistorico;
-                            
-                            atualizarTabelaEstoque();
-                            atualizarDashboard();
-                            atualizarSelectPlacas();
-                            atualizarTabelaHistorico();
-                            
-                            console.log('🔄 Dados atualizados automaticamente');
-                        }
-                    } catch (error) {
-                        console.warn('❌ Erro na atualização automática:', error);
-                    }
-                }, 5000);
+        // Salvar placa (tenta Supabase primeiro, depois localStorage)
+        async function salvarPlaca(placaData) {
+            try {
+                let resultado;
+                
+                if (usandoSupabase) {
+                    resultado = await salvarPlacaSupabase(placaData);
+                } else {
+                    resultado = salvarPlacaLocal(placaData);
+                }
+                
+                await carregarDados();
+                return resultado;
+            } catch (error) {
+                console.error('❌ Erro ao salvar placa:', error);
+                // Fallback para localStorage
+                const resultado = salvarPlacaLocal(placaData);
+                await carregarDados();
+                return resultado;
             }
         }
+
+        // Salvar movimentação (tenta Supabase primeiro, depois localStorage)
+        async function salvarMovimentacao(dadosMovimentacao) {
+            try {
+                let resultado;
+                
+                if (usandoSupabase) {
+                    resultado = await salvarMovimentacaoSupabase(dadosMovimentacao);
+                } else {
+                    resultado = salvarMovimentacaoLocal(dadosMovimentacao);
+                }
+                
+                // Atualizar saldo da placa
+                await atualizarSaldoPlaca(dadosMovimentacao.placaId, dadosMovimentacao.novaQuantidade);
+                await carregarDados();
+                return resultado;
+            } catch (error) {
+                console.error('❌ Erro ao salvar movimentação:', error);
+                // Fallback para localStorage
+                const resultado = salvarMovimentacaoLocal(dadosMovimentacao);
+                atualizarSaldoPlacaLocal(dadosMovimentacao.placaId, dadosMovimentacao.novaQuantidade);
+                await carregarDados();
+                return resultado;
+            }
+        }
+
+        // Atualizar saldo da placa (tenta Supabase primeiro, depois localStorage)
+        async function atualizarSaldoPlaca(placaId, novaQuantidade) {
+            try {
+                if (usandoSupabase) {
+                    await atualizarSaldoPlacaSupabase(placaId, novaQuantidade);
+                } else {
+                    atualizarSaldoPlacaLocal(placaId, novaQuantidade);
+                }
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao atualizar saldo:', error);
+                // Fallback para localStorage
+                atualizarSaldoPlacaLocal(placaId, novaQuantidade);
+                return true;
+            }
+        }
+
+        // Excluir placa (tenta Supabase primeiro, depois localStorage)
+        async function excluirPlaca(id) {
+            try {
+                if (usandoSupabase) {
+                    await excluirPlacaSupabase(id);
+                } else {
+                    excluirPlacaLocal(id);
+                }
+                
+                await carregarDados();
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao excluir placa:', error);
+                // Fallback para localStorage
+                excluirPlacaLocal(id);
+                await carregarDados();
+                return true;
+            }
+        }
+
+        // Excluir lançamento (tenta Supabase primeiro, depois localStorage)
+        async function excluirLancamento(id) {
+            try {
+                if (usandoSupabase) {
+                    await excluirLancamentoSupabase(id);
+                } else {
+                    excluirLancamentoLocal(id);
+                }
+                
+                await carregarDados();
+                return true;
+            } catch (error) {
+                console.error('❌ Erro ao excluir lançamento:', error);
+                // Fallback para localStorage
+                excluirLancamentoLocal(id);
+                await carregarDados();
+                return true;
+            }
+        }
+
+        // Atualizar lançamento (tenta Supabase primeiro, depois localStorage)
+        async function atualizarLancamento(dadosLancamento) {
+            try {
+                let resultado;
+                
+                if (usandoSupabase) {
+                    resultado = await atualizarLancamentoSupabase(dadosLancamento);
+                } else {
+                    resultado = atualizarLancamentoLocal(dadosLancamento);
+                }
+                
+                await carregarDados();
+                return resultado;
+            } catch (error) {
+                console.error('❌ Erro ao atualizar lançamento:', error);
+                // Fallback para localStorage
+                const resultado = atualizarLancamentoLocal(dadosLancamento);
+                await carregarDados();
+                return resultado;
+            }
+        }
+
+        // ========== FUNÇÕES DE INTERFACE ==========
 
         // Atualizar tabela de estoque
         function atualizarTabelaEstoque() {
@@ -939,14 +1177,14 @@
                             ${placa.quantidade === 0 ? 
                                 '<span class="badge bg-danger">Sem Estoque</span>' : 
                                 placa.quantidade <= LIMITE_ESTOQUE_BAIXO ? 
-                                '<span class="badge bg-warning">Baixo Estoque</span>' : 
+                                '<span class="badge bg-warning text-dark">Estoque Baixo</span>' : 
                                 '<span class="badge bg-success">Em Estoque</span>'}
                         </td>
                         <td class="action-buttons">
                             <button class="btn btn-sm btn-outline-primary" onclick="editarPlaca('${placa.id}')">
                                 <i class="bi bi-pencil"></i>
                             </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="excluirPlaca('${placa.id}')">
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirPlacaConfirmacao('${placa.id}')">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </td>
@@ -957,52 +1195,54 @@
 
         // Atualizar dashboard
         function atualizarDashboard() {
-            // Totais
-            const totalPlacas = placas.reduce((sum, placa) => sum + placa.quantidade, 0);
-            const tiposPlacas = placas.length;
-            const baixoEstoque = placas.filter(p => p.quantidade > 0 && p.quantidade <= LIMITE_ESTOQUE_BAIXO).length;
-            const semEstoque = placas.filter(p => p.quantidade === 0).length;
-            
-            document.getElementById('total-placas').textContent = totalPlacas;
-            document.getElementById('tipos-placas').textContent = tiposPlacas;
-            document.getElementById('baixo-estoque').textContent = baixoEstoque;
-            document.getElementById('sem-estoque').textContent = semEstoque;
+            // Atualizar cards
+            document.getElementById('total-placas').textContent = placas.reduce((total, placa) => total + placa.quantidade, 0);
+            document.getElementById('tipos-placas').textContent = placas.length;
+            document.getElementById('baixo-estoque').textContent = placas.filter(p => p.quantidade > 0 && p.quantidade <= LIMITE_ESTOQUE_BAIXO).length;
+            document.getElementById('sem-estoque').textContent = placas.filter(p => p.quantidade === 0).length;
             
             // Atualizar alertas
-            const alertasContainer = document.getElementById('alertas-estoque');
-            const alertas = [];
-            
-            if (semEstoque > 0) {
-                alertas.push(`
-                    <div class="alert alert-danger d-flex align-items-center">
-                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
-                        <div>${semEstoque} tipo(s) de placa sem estoque</div>
-                    </div>
-                `);
-            }
-            
-            if (baixoEstoque > 0) {
-                alertas.push(`
-                    <div class="alert alert-warning d-flex align-items-center">
-                        <i class="bi bi-exclamation-triangle me-2"></i>
-                        <div>${baixoEstoque} tipo(s) de placa com estoque baixo</div>
-                    </div>
-                `);
-            }
-            
-            if (alertas.length === 0) {
-                alertas.push(`
-                    <div class="alert alert-success d-flex align-items-center">
-                        <i class="bi bi-check-circle-fill me-2"></i>
-                        <div>Estoque em condições normais</div>
-                    </div>
-                `);
-            }
-            
-            alertasContainer.innerHTML = alertas.join('');
+            atualizarAlertasEstoque();
             
             // Atualizar gráfico
             atualizarGraficoEstoque();
+        }
+
+        // Atualizar alertas de estoque
+        function atualizarAlertasEstoque() {
+            const alertasContainer = document.getElementById('alertas-estoque');
+            const placasBaixoEstoque = placas.filter(p => p.quantidade > 0 && p.quantidade <= LIMITE_ESTOQUE_BAIXO);
+            const placasSemEstoque = placas.filter(p => p.quantidade === 0);
+            
+            let alertasHTML = '';
+            
+            if (placasSemEstoque.length > 0) {
+                alertasHTML += `
+                    <div class="alert alert-danger">
+                        <h6><i class="bi bi-exclamation-triangle"></i> Placas sem estoque</h6>
+                        <ul class="mb-0">
+                            ${placasSemEstoque.map(p => `<li>${p.codigo} - ${p.descricao}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            if (placasBaixoEstoque.length > 0) {
+                alertasHTML += `
+                    <div class="alert alert-warning">
+                        <h6><i class="bi bi-exclamation-triangle"></i> Placas com estoque baixo</h6>
+                        <ul class="mb-0">
+                            ${placasBaixoEstoque.map(p => `<li>${p.codigo} - ${p.descricao} (${p.quantidade} unidades)</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            if (alertasHTML === '') {
+                alertasHTML = '<div class="alert alert-success"><i class="bi bi-check-circle"></i> Todas as placas estão com estoque adequado</div>';
+            }
+            
+            alertasContainer.innerHTML = alertasHTML;
         }
 
         // Atualizar gráfico de estoque
@@ -1015,9 +1255,16 @@
                 window.estoqueChartInstance.destroy();
             }
             
+            // Preparar dados para o gráfico
             const labels = placas.map(p => p.codigo);
             const dados = placas.map(p => p.quantidade);
+            const cores = placas.map(p => {
+                if (p.quantidade === 0) return '#dc3545';
+                if (p.quantidade <= LIMITE_ESTOQUE_BAIXO) return '#ffc107';
+                return '#00ff88';
+            });
             
+            // Criar novo gráfico
             window.estoqueChartInstance = new Chart(ctx, {
                 type: tipoGrafico,
                 data: {
@@ -1025,11 +1272,8 @@
                     datasets: [{
                         label: 'Quantidade em Estoque',
                         data: dados,
-                        backgroundColor: dados.map(q => 
-                            q === 0 ? '#dc3545' : 
-                            q <= LIMITE_ESTOQUE_BAIXO ? '#ffc107' : '#00ff88'
-                        ),
-                        borderColor: '#333',
+                        backgroundColor: tipoGrafico === 'pie' || tipoGrafico === 'doughnut' ? cores : '#00ff88',
+                        borderColor: tipoGrafico === 'line' ? '#00ff88' : '#333',
                         borderWidth: 1
                     }]
                 },
@@ -1052,7 +1296,7 @@
                         y: {
                             beginAtZero: true,
                             ticks: {
-                                color: '#adb5bd'
+                                color: '#f8f9fa'
                             },
                             grid: {
                                 color: '#333'
@@ -1060,7 +1304,7 @@
                         },
                         x: {
                             ticks: {
-                                color: '#adb5bd'
+                                color: '#f8f9fa'
                             },
                             grid: {
                                 color: '#333'
@@ -1069,6 +1313,45 @@
                     } : {}
                 }
             });
+        }
+
+        // Atualizar histórico completo
+        function atualizarHistoricoCompleto() {
+            const tbody = document.getElementById('tabela-historico-completo');
+            const totalRegistros = document.getElementById('total-registros-historico');
+            
+            if (historicoLancamentos.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum lançamento registrado</td></tr>';
+                totalRegistros.textContent = '0 registros';
+                return;
+            }
+            
+            tbody.innerHTML = historicoLancamentos.map(lancamento => {
+                const tipoBadge = lancamento.tipo === 'entrada' ? 
+                    '<span class="badge entrada-badge">Entrada</span>' : 
+                    '<span class="badge saida-badge">Saída</span>';
+                
+                return `
+                    <tr>
+                        <td>${lancamento.data}</td>
+                        <td>${tipoBadge}</td>
+                        <td>${lancamento.codigo} - ${lancamento.descricao}</td>
+                        <td>${lancamento.quantidade}</td>
+                        <td>${lancamento.responsavel}</td>
+                        <td>${FINALIDADES[lancamento.finalidade] || lancamento.finalidade}</td>
+                        <td class="action-buttons">
+                            <button class="btn btn-sm btn-outline-primary" onclick="editarLancamento('${lancamento.id}')">
+                                <i class="bi bi-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="excluirLancamentoConfirmacao('${lancamento.id}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+            
+            totalRegistros.textContent = `${historicoLancamentos.length} registros`;
         }
 
         // Atualizar select de placas
@@ -1082,46 +1365,6 @@
                 option.textContent = `${placa.codigo} - ${placa.descricao} (${placa.quantidade} em estoque)`;
                 select.appendChild(option);
             });
-        }
-
-        // Atualizar tabela de histórico
-        function atualizarTabelaHistorico() {
-            const tbody = document.getElementById('tabela-historico-completo');
-            const totalElement = document.getElementById('total-registros-historico');
-            
-            totalElement.textContent = `${historicoLancamentos.length} registros`;
-            
-            if (historicoLancamentos.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" class="text-center">Nenhum lançamento registrado</td></tr>';
-                return;
-            }
-            
-            tbody.innerHTML = historicoLancamentos.map(lancamento => {
-                const tipoBadge = lancamento.tipo === 'entrada' ? 
-                    '<span class="badge entrada-badge">Entrada</span>' : 
-                    '<span class="badge saida-badge">Saída</span>';
-                
-                const finalidadeTexto = FINALIDADES[lancamento.finalidade] || lancamento.finalidade;
-                
-                return `
-                    <tr>
-                        <td>${lancamento.data}</td>
-                        <td>${tipoBadge}</td>
-                        <td>${lancamento.codigo} - ${lancamento.descricao}</td>
-                        <td>${lancamento.quantidade}</td>
-                        <td>${lancamento.responsavel}</td>
-                        <td>${finalidadeTexto}</td>
-                        <td class="action-buttons">
-                            <button class="btn btn-sm btn-outline-primary" onclick="editarLancamento('${lancamento.id}')">
-                                <i class="bi bi-pencil"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="excluirLancamento('${lancamento.id}')">
-                                <i class="bi bi-trash"></i>
-                            </button>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
         }
 
         // ========== FUNÇÕES DE FORMULÁRIOS ==========
@@ -1139,123 +1382,46 @@
             document.getElementById('form-placa').reset();
             document.getElementById('placa-id').value = '';
             document.getElementById('titulo-cadastro-placa').textContent = 'Cadastrar Nova Placa';
+            document.getElementById('btn-placa-text').textContent = 'Salvar Placa';
         }
 
         // Cancelar cadastro de placa
         function cancelarCadastroPlaca() {
-            irParaEstoque();
-        }
-
-        // Salvar placa (nova ou edição)
-        async function salvarPlaca(event) {
-            event.preventDefault();
-            
-            const id = document.getElementById('placa-id').value;
-            const codigo = document.getElementById('codigo').value.trim();
-            const descricao = document.getElementById('descricao').value.trim();
-            const quantidade = parseInt(document.getElementById('quantidade').value);
-            const localizacao = document.getElementById('localizacao').value.trim();
-            const observacoes = document.getElementById('observacoes').value.trim();
-            
-            // Validações
-            if (!codigo || !descricao || isNaN(quantidade) || quantidade < 0) {
-                mostrarMensagem('❌ Preencha todos os campos obrigatórios corretamente', 'danger');
-                return;
-            }
-            
-            // Verificar se código já existe (em edição, ignorar a própria placa)
-            const codigoExistente = placas.find(p => 
-                p.codigo.toLowerCase() === codigo.toLowerCase() && p.id != id
-            );
-            
-            if (codigoExistente) {
-                mostrarMensagem('❌ Já existe uma placa com este código', 'danger');
-                return;
-            }
-            
-            const placaData = {
-                codigo,
-                descricao,
-                quantidade,
-                localizacao,
-                observacoes
-            };
-            
-            // Mostrar loading
-            document.getElementById('btn-placa-text').style.display = 'none';
-            document.getElementById('btn-placa-loading').style.display = 'inline-block';
-            
-            try {
-                let resultado;
-                if (usandoSupabase) {
-                    if (id) {
-                        placaData.id = parseInt(id);
-                        resultado = await salvarPlacaSupabase(placaData);
-                    } else {
-                        resultado = await salvarPlacaSupabase(placaData);
-                    }
-                } else {
-                    // Salvar no localStorage
-                    if (id) {
-                        const index = placas.findIndex(p => p.id === id);
-                        if (index !== -1) {
-                            placas[index] = { ...placas[index], ...placaData };
-                        }
-                    } else {
-                        placaData.id = Date.now().toString();
-                        placas.unshift(placaData);
-                    }
-                    salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
-                }
-                
-                mostrarMensagem('✅ Placa salva com sucesso!', 'success');
-                await carregarDados();
-                irParaEstoque();
-                
-            } catch (error) {
-                console.error('❌ Erro ao salvar placa:', error);
-                mostrarMensagem('❌ Erro ao salvar placa', 'danger');
-            } finally {
-                // Restaurar botão
-                document.getElementById('btn-placa-text').style.display = 'inline';
-                document.getElementById('btn-placa-loading').style.display = 'none';
-            }
+            document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+            document.querySelector('.nav-link[data-section="estoque"]').classList.add('active');
+            document.querySelectorAll('.page-section').forEach(section => {
+                section.classList.remove('active-section');
+            });
+            document.getElementById('estoque').classList.add('active-section');
         }
 
         // Editar placa
         function editarPlaca(id) {
-            const placa = placas.find(p => p.id == id);
+            const placa = placas.find(p => p.id === id);
             if (!placa) return;
             
             abrirCadastroPlaca();
-            document.getElementById('titulo-cadastro-placa').textContent = 'Editar Placa';
             
+            // Preencher formulário
             document.getElementById('placa-id').value = placa.id;
             document.getElementById('codigo').value = placa.codigo;
             document.getElementById('descricao').value = placa.descricao;
             document.getElementById('quantidade').value = placa.quantidade;
             document.getElementById('localizacao').value = placa.localizacao || '';
             document.getElementById('observacoes').value = placa.observacoes || '';
+            
+            document.getElementById('titulo-cadastro-placa').textContent = 'Editar Placa';
+            document.getElementById('btn-placa-text').textContent = 'Atualizar Placa';
         }
 
-        // Excluir placa
-        async function excluirPlaca(id) {
-            if (!confirm('Tem certeza que deseja excluir esta placa?')) return;
+        // Excluir placa (confirmação)
+        function excluirPlacaConfirmacao(id) {
+            const placa = placas.find(p => p.id === id);
+            if (!placa) return;
             
-            try {
-                if (usandoSupabase) {
-                    await excluirPlacaSupabase(parseInt(id));
-                } else {
-                    placas = placas.filter(p => p.id !== id);
-                    salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
-                }
-                
-                mostrarMensagem('✅ Placa excluída com sucesso!', 'success');
-                await carregarDados();
-                
-            } catch (error) {
-                console.error('❌ Erro ao excluir placa:', error);
-                mostrarMensagem('❌ Erro ao excluir placa', 'danger');
+            if (confirm(`Tem certeza que deseja excluir a placa ${placa.codigo} - ${placa.descricao}?`)) {
+                excluirPlaca(id);
+                mostrarMensagem('Placa excluída com sucesso!', 'success');
             }
         }
 
@@ -1265,97 +1431,30 @@
             document.getElementById('data-movimentacao').value = obterDataAtual();
         }
 
-        // Registrar movimentação
-        async function registrarMovimentacao(event) {
-            event.preventDefault();
+        // Excluir lançamento (confirmação)
+        function excluirLancamentoConfirmacao(id) {
+            const lancamento = historicoLancamentos.find(h => h.id === id);
+            if (!lancamento) return;
             
-            const placaId = document.getElementById('placa-select').value;
-            const tipo = document.getElementById('tipo-movimentacao').value;
-            const quantidade = parseInt(document.getElementById('quantidade-mov').value);
-            const responsavel = document.getElementById('responsavel').value.trim();
-            const finalidade = document.getElementById('finalidade').value;
-            const dataMovimentacao = document.getElementById('data-movimentacao').value || obterDataAtual();
-            
-            // Validações
-            if (!placaId || !responsavel || !finalidade || isNaN(quantidade) || quantidade <= 0) {
-                mostrarMensagem('❌ Preencha todos os campos obrigatórios corretamente', 'danger');
-                return;
-            }
-            
-            const placa = placas.find(p => p.id == placaId);
-            if (!placa) {
-                mostrarMensagem('❌ Placa não encontrada', 'danger');
-                return;
-            }
-            
-            // Validar estoque para saída
-            if (tipo === 'saida' && placa.quantidade < quantidade) {
-                mostrarMensagem(`❌ Estoque insuficiente. Disponível: ${placa.quantidade}`, 'danger');
-                return;
-            }
-            
-            // Mostrar loading
-            document.getElementById('btn-movimentacao-text').style.display = 'none';
-            document.getElementById('btn-movimentacao-loading').style.display = 'inline-block';
-            
-            try {
-                // Calcular nova quantidade
-                const novaQuantidade = tipo === 'entrada' ? 
-                    placa.quantidade + quantidade : 
-                    placa.quantidade - quantidade;
-                
-                // Salvar movimentação
-                const dadosMovimentacao = {
-                    data: dataMovimentacao,
-                    tipo,
-                    codigo: placa.codigo,
-                    descricao: placa.descricao,
-                    quantidade,
-                    responsavel,
-                    finalidade
-                };
-                
-                if (usandoSupabase) {
-                    await salvarMovimentacaoSupabase(dadosMovimentacao);
-                    await atualizarSaldoPlacaSupabase(parseInt(placaId), novaQuantidade);
-                } else {
-                    // Salvar no localStorage
-                    dadosMovimentacao.id = Date.now().toString();
-                    historicoLancamentos.unshift(dadosMovimentacao);
-                    salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
-                    
-                    // Atualizar quantidade da placa
-                    placa.quantidade = novaQuantidade;
-                    salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
-                }
-                
-                mostrarMensagem(`✅ ${tipo === 'entrada' ? 'Entrada' : 'Saída'} registrada com sucesso!`, 'success');
-                document.getElementById('form-movimentacao').reset();
-                document.getElementById('data-movimentacao').value = obterDataAtual();
-                
-                await carregarDados();
-                
-            } catch (error) {
-                console.error('❌ Erro ao registrar movimentação:', error);
-                mostrarMensagem('❌ Erro ao registrar movimentação', 'danger');
-            } finally {
-                // Restaurar botão
-                document.getElementById('btn-movimentacao-text').style.display = 'inline';
-                document.getElementById('btn-movimentacao-loading').style.display = 'none';
+            if (confirm(`Tem certeza que deseja excluir este lançamento?`)) {
+                excluirLancamento(id);
+                mostrarMensagem('Lançamento excluído com sucesso!', 'success');
             }
         }
 
         // Editar lançamento
-        async function editarLancamento(id) {
-            const lancamento = historicoLancamentos.find(l => l.id == id);
+        function editarLancamento(id) {
+            const lancamento = historicoLancamentos.find(h => h.id === id);
             if (!lancamento) return;
             
+            // Preencher modal
             document.getElementById('editar-lancamento-id').value = lancamento.id;
             document.getElementById('editar-quantidade').value = lancamento.quantidade;
             document.getElementById('editar-responsavel').value = lancamento.responsavel;
             document.getElementById('editar-finalidade').value = lancamento.finalidade;
             document.getElementById('editar-data').value = lancamento.data;
             
+            // Abrir modal
             const modal = new bootstrap.Modal(document.getElementById('modalEditarLancamento'));
             modal.show();
         }
@@ -1368,9 +1467,8 @@
             const finalidade = document.getElementById('editar-finalidade').value;
             const data = document.getElementById('editar-data').value;
             
-            // Validações
-            if (!responsavel || !finalidade || isNaN(quantidade) || quantidade <= 0 || !data) {
-                mostrarMensagem('❌ Preencha todos os campos corretamente', 'danger');
+            if (!quantidade || !responsavel || !finalidade || !data) {
+                mostrarMensagem('Preencha todos os campos obrigatórios!', 'danger');
                 return;
             }
             
@@ -1379,43 +1477,22 @@
             document.getElementById('btn-salvar-loading').style.display = 'inline-block';
             
             try {
-                if (usandoSupabase) {
-                    const { error } = await supabase
-                        .from('historico_lancamentos')
-                        .update({
-                            quantidade,
-                            responsavel,
-                            finalidade,
-                            data
-                        })
-                        .eq('id', parseInt(id));
-                    
-                    if (error) throw error;
-                } else {
-                    // Atualizar no localStorage
-                    const index = historicoLancamentos.findIndex(l => l.id === id);
-                    if (index !== -1) {
-                        historicoLancamentos[index] = {
-                            ...historicoLancamentos[index],
-                            quantidade,
-                            responsavel,
-                            finalidade,
-                            data
-                        };
-                        salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
-                    }
-                }
+                await atualizarLancamento({
+                    id: id,
+                    quantidade: quantidade,
+                    responsavel: responsavel,
+                    finalidade: finalidade,
+                    data: data
+                });
                 
-                mostrarMensagem('✅ Lançamento atualizado com sucesso!', 'success');
-                
+                // Fechar modal
                 const modal = bootstrap.Modal.getInstance(document.getElementById('modalEditarLancamento'));
                 modal.hide();
                 
-                await carregarDados();
-                
+                mostrarMensagem('Lançamento atualizado com sucesso!', 'success');
             } catch (error) {
                 console.error('❌ Erro ao atualizar lançamento:', error);
-                mostrarMensagem('❌ Erro ao atualizar lançamento', 'danger');
+                mostrarMensagem('Erro ao atualizar lançamento!', 'danger');
             } finally {
                 // Restaurar botão
                 document.getElementById('btn-salvar-text').style.display = 'inline';
@@ -1423,62 +1500,217 @@
             }
         }
 
-        // Excluir lançamento
-        async function excluirLancamento(id) {
-            if (!confirm('Tem certeza que deseja excluir este lançamento?')) return;
+        // ========== EVENT LISTENERS ==========
+
+        // Navegação entre seções
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                
+                // Atualizar navegação ativa
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Mostrar seção correspondente
+                const targetSection = this.getAttribute('data-section');
+                document.querySelectorAll('.page-section').forEach(section => {
+                    section.classList.remove('active-section');
+                });
+                document.getElementById(targetSection).classList.add('active-section');
+            });
+        });
+
+        // Formulário de placa
+        document.getElementById('form-placa').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const id = document.getElementById('placa-id').value;
+            const codigo = document.getElementById('codigo').value.trim();
+            const descricao = document.getElementById('descricao').value.trim();
+            const quantidade = parseInt(document.getElementById('quantidade').value);
+            const localizacao = document.getElementById('localizacao').value.trim();
+            const observacoes = document.getElementById('observacoes').value.trim();
+            
+            if (!codigo || !descricao || isNaN(quantidade)) {
+                mostrarMensagem('Preencha todos os campos obrigatórios!', 'danger');
+                return;
+            }
+            
+            // Verificar se código já existe (apenas para novas placas)
+            if (!id && placas.some(p => p.codigo === codigo)) {
+                mostrarMensagem('Já existe uma placa com este código!', 'danger');
+                return;
+            }
+            
+            // Mostrar loading
+            document.getElementById('btn-placa-text').style.display = 'none';
+            document.getElementById('btn-placa-loading').style.display = 'inline-block';
             
             try {
-                if (usandoSupabase) {
-                    await excluirLancamentoSupabase(parseInt(id));
-                } else {
-                    historicoLancamentos = historicoLancamentos.filter(l => l.id !== id);
-                    salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
-                }
+                await salvarPlaca({
+                    id: id || undefined,
+                    codigo: codigo,
+                    descricao: descricao,
+                    quantidade: quantidade,
+                    localizacao: localizacao || null,
+                    observacoes: observacoes || null
+                });
                 
-                mostrarMensagem('✅ Lançamento excluído com sucesso!', 'success');
-                await carregarDados();
-                
+                mostrarMensagem(id ? 'Placa atualizada com sucesso!' : 'Placa cadastrada com sucesso!', 'success');
+                cancelarCadastroPlaca();
             } catch (error) {
-                console.error('❌ Erro ao excluir lançamento:', error);
-                mostrarMensagem('❌ Erro ao excluir lançamento', 'danger');
+                console.error('❌ Erro ao salvar placa:', error);
+                mostrarMensagem('Erro ao salvar placa!', 'danger');
+            } finally {
+                // Restaurar botão
+                document.getElementById('btn-placa-text').style.display = 'inline';
+                document.getElementById('btn-placa-loading').style.display = 'none';
             }
+        });
+
+        // Formulário de movimentação
+        document.getElementById('form-movimentacao').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const placaId = document.getElementById('placa-select').value;
+            const tipo = document.getElementById('tipo-movimentacao').value;
+            const quantidade = parseInt(document.getElementById('quantidade-mov').value);
+            const responsavel = document.getElementById('responsavel').value.trim();
+            const data = document.getElementById('data-movimentacao').value || obterDataAtual();
+            const finalidade = document.getElementById('finalidade').value;
+            
+            if (!placaId || !quantidade || !responsavel || !finalidade) {
+                mostrarMensagem('Preencha todos os campos obrigatórios!', 'danger');
+                return;
+            }
+            
+            const placa = placas.find(p => p.id === placaId);
+            if (!placa) {
+                mostrarMensagem('Placa não encontrada!', 'danger');
+                return;
+            }
+            
+            // Validar quantidade para saída
+            if (tipo === 'saida' && quantidade > placa.quantidade) {
+                mostrarMensagem(`Quantidade insuficiente em estoque! Disponível: ${placa.quantidade}`, 'danger');
+                return;
+            }
+            
+            // Calcular nova quantidade
+            const novaQuantidade = tipo === 'entrada' ? 
+                placa.quantidade + quantidade : 
+                placa.quantidade - quantidade;
+            
+            // Mostrar loading
+            document.getElementById('btn-movimentacao-text').style.display = 'none';
+            document.getElementById('btn-movimentacao-loading').style.display = 'inline-block';
+            
+            try {
+                await salvarMovimentacao({
+                    placaId: placaId,
+                    tipo: tipo,
+                    codigo: placa.codigo,
+                    descricao: placa.descricao,
+                    quantidade: quantidade,
+                    responsavel: responsavel,
+                    finalidade: finalidade,
+                    data: data,
+                    novaQuantidade: novaQuantidade
+                });
+                
+                mostrarMensagem(`Movimentação registrada com sucesso!`, 'success');
+                document.getElementById('form-movimentacao').reset();
+                document.getElementById('data-movimentacao').value = obterDataAtual();
+            } catch (error) {
+                console.error('❌ Erro ao registrar movimentação:', error);
+                mostrarMensagem('Erro ao registrar movimentação!', 'danger');
+            } finally {
+                // Restaurar botão
+                document.getElementById('btn-movimentacao-text').style.display = 'inline';
+                document.getElementById('btn-movimentacao-loading').style.display = 'none';
+            }
+        });
+
+        // Alterar tipo de gráfico
+        document.getElementById('tipo-grafico').addEventListener('change', function() {
+            atualizarGraficoEstoque();
+        });
+
+        // ========== FUNÇÕES DE EXPORTAÇÃO ==========
+
+        // Exportar estoque para Excel
+        function exportarEstoqueExcel() {
+            if (placas.length === 0) {
+                mostrarMensagem('Não há dados para exportar!', 'warning');
+                return;
+            }
+            
+            // Preparar dados para exportação
+            const dadosExportacao = placas.map(placa => ({
+                'Código': placa.codigo,
+                'Descrição': placa.descricao,
+                'Quantidade': placa.quantidade,
+                'Localização': placa.localizacao || '',
+                'Observações': placa.observacoes || '',
+                'Status': placa.quantidade === 0 ? 'Sem Estoque' : 
+                         placa.quantidade <= LIMITE_ESTOQUE_BAIXO ? 'Estoque Baixo' : 'Em Estoque'
+            }));
+            
+            // Criar planilha
+            const ws = XLSX.utils.json_to_sheet(dadosExportacao);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Estoque de Placas');
+            
+            // Exportar arquivo
+            const nomeArquivo = `estoque_placas_${obterDataAtual()}.xlsx`;
+            XLSX.writeFile(wb, nomeArquivo);
+            
+            mostrarMensagem('Estoque exportado com sucesso!', 'success');
+        }
+
+        // Exportar histórico para Excel
+        function exportarHistoricoExcel() {
+            if (historicoLancamentos.length === 0) {
+                mostrarMensagem('Não há dados para exportar!', 'warning');
+                return;
+            }
+            
+            // Preparar dados para exportação
+            const dadosExportacao = historicoLancamentos.map(lancamento => ({
+                'Data': lancamento.data,
+                'Tipo': lancamento.tipo === 'entrada' ? 'Entrada' : 'Saída',
+                'Código': lancamento.codigo,
+                'Descrição': lancamento.descricao,
+                'Quantidade': lancamento.quantidade,
+                'Responsável': lancamento.responsavel,
+                'Finalidade': FINALIDADES[lancamento.finalidade] || lancamento.finalidade
+            }));
+            
+            // Criar planilha
+            const ws = XLSX.utils.json_to_sheet(dadosExportacao);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Histórico de Lançamentos');
+            
+            // Exportar arquivo
+            const nomeArquivo = `historico_lancamentos_${obterDataAtual()}.xlsx`;
+            XLSX.writeFile(wb, nomeArquivo);
+            
+            mostrarMensagem('Histórico exportado com sucesso!', 'success');
         }
 
         // ========== INICIALIZAÇÃO ==========
 
-        document.addEventListener('DOMContentLoaded', function() {
-            // Configurar data atual
-            document.getElementById('data-movimentacao').value = obterDataAtual();
+        // Inicializar data no formulário de movimentação
+        document.getElementById('data-movimentacao').value = obterDataAtual();
+
+        // Carregar dados ao iniciar
+        document.addEventListener('DOMContentLoaded', async function() {
+            await carregarDados();
             
-            // Event listeners
-            document.getElementById('form-placa').addEventListener('submit', salvarPlaca);
-            document.getElementById('form-movimentacao').addEventListener('submit', registrarMovimentacao);
-            
-            // Navegação entre seções
-            document.querySelectorAll('.nav-link[data-section]').forEach(link => {
-                link.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    
-                    // Atualizar navegação
-                    document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
-                    this.classList.add('active');
-                    
-                    // Mostrar seção correspondente
-                    const sectionId = this.getAttribute('data-section');
-                    document.querySelectorAll('.page-section').forEach(section => {
-                        section.classList.remove('active-section');
-                    });
-                    document.getElementById(sectionId).classList.add('active-section');
-                });
-            });
-            
-            // Event listener para mudança de tipo de gráfico
-            document.getElementById('tipo-grafico').addEventListener('change', atualizarGraficoEstoque);
-            
-            // Carregar dados iniciais
-            carregarDados().then(() => {
-                configurarAtualizacoesTempoReal();
-            });
+            // Configurar atualização automática a cada 30 segundos
+            intervaloAtualizacao = setInterval(async () => {
+                await carregarDados();
+            }, 30000);
         });
     </script>
 </body>
