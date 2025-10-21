@@ -769,7 +769,7 @@
                 }
                 
                 if (error) throw error;
-                return true;
+                return data;
             } catch (error) {
                 console.error('❌ Erro ao salvar placa no Supabase:', error);
                 throw error;
@@ -908,7 +908,6 @@
                             atualizarTabelaHistorico();
                             
                             console.log('🔄 Dados atualizados automaticamente');
-                            mostrarMensagem('🔄 Dados atualizados automaticamente', 'info');
                         }
                     } catch (error) {
                         console.warn('❌ Erro na atualização automática:', error);
@@ -1166,7 +1165,7 @@
             
             // Verificar se código já existe (em edição, ignorar a própria placa)
             const codigoExistente = placas.find(p => 
-                p.codigo.toLowerCase() === codigo.toLowerCase() && p.id !== id
+                p.codigo.toLowerCase() === codigo.toLowerCase() && p.id != id
             );
             
             if (codigoExistente) {
@@ -1187,12 +1186,13 @@
             document.getElementById('btn-placa-loading').style.display = 'inline-block';
             
             try {
+                let resultado;
                 if (usandoSupabase) {
                     if (id) {
-                        placaData.id = id;
-                        await salvarPlacaSupabase(placaData);
+                        placaData.id = parseInt(id);
+                        resultado = await salvarPlacaSupabase(placaData);
                     } else {
-                        await salvarPlacaSupabase(placaData);
+                        resultado = await salvarPlacaSupabase(placaData);
                     }
                 } else {
                     // Salvar no localStorage
@@ -1224,7 +1224,7 @@
 
         // Editar placa
         function editarPlaca(id) {
-            const placa = placas.find(p => p.id === id);
+            const placa = placas.find(p => p.id == id);
             if (!placa) return;
             
             abrirCadastroPlaca();
@@ -1244,7 +1244,7 @@
             
             try {
                 if (usandoSupabase) {
-                    await excluirPlacaSupabase(id);
+                    await excluirPlacaSupabase(parseInt(id));
                 } else {
                     placas = placas.filter(p => p.id !== id);
                     salvarNoLocalStorage(STORAGE_KEYS.PLACAS, placas);
@@ -1282,7 +1282,7 @@
                 return;
             }
             
-            const placa = placas.find(p => p.id === placaId);
+            const placa = placas.find(p => p.id == placaId);
             if (!placa) {
                 mostrarMensagem('❌ Placa não encontrada', 'danger');
                 return;
@@ -1317,7 +1317,7 @@
                 
                 if (usandoSupabase) {
                     await salvarMovimentacaoSupabase(dadosMovimentacao);
-                    await atualizarSaldoPlacaSupabase(placaId, novaQuantidade);
+                    await atualizarSaldoPlacaSupabase(parseInt(placaId), novaQuantidade);
                 } else {
                     // Salvar no localStorage
                     dadosMovimentacao.id = Date.now().toString();
@@ -1347,7 +1347,7 @@
 
         // Editar lançamento
         async function editarLancamento(id) {
-            const lancamento = historicoLancamentos.find(l => l.id === id);
+            const lancamento = historicoLancamentos.find(l => l.id == id);
             if (!lancamento) return;
             
             document.getElementById('editar-lancamento-id').value = lancamento.id;
@@ -1388,7 +1388,7 @@
                             finalidade,
                             data
                         })
-                        .eq('id', id);
+                        .eq('id', parseInt(id));
                     
                     if (error) throw error;
                 } else {
@@ -1429,7 +1429,7 @@
             
             try {
                 if (usandoSupabase) {
-                    await excluirLancamentoSupabase(id);
+                    await excluirLancamentoSupabase(parseInt(id));
                 } else {
                     historicoLancamentos = historicoLancamentos.filter(l => l.id !== id);
                     salvarNoLocalStorage(STORAGE_KEYS.HISTORICO, historicoLancamentos);
