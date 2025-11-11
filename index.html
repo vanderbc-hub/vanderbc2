@@ -494,9 +494,35 @@
             font-size: 0.9rem;
             margin-left: 10px;
         }
+        
+        /* Indicador de atualização em tempo real */
+        .realtime-indicator {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background-color: var(--primary-color);
+            color: #000;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            z-index: 1000;
+            display: none;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
+    <!-- Indicador de atualização em tempo real -->
+    <div class="realtime-indicator" id="realtime-indicator">
+        <i class="bi bi-broadcast"></i> Atualizando...
+    </div>
+
     <!-- Modal de Login -->
     <div class="modal fade" id="login-modal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
         <div class="modal-dialog modal-sm">
@@ -1061,6 +1087,7 @@
         let ordenacaoAtualDisponivel = 'codigo-asc';
         let ordenacaoAtualTriagem = 'codigo-asc';
         let placaEditando = null;
+        let subscriptions = [];
 
         // Inicialização
         document.addEventListener('DOMContentLoaded', function() {
@@ -1168,6 +1195,86 @@
         function salvarDadosLocalStorage() {
             localStorage.setItem('placas', JSON.stringify(placas));
             localStorage.setItem('lancamentos', JSON.stringify(lancamentos));
+        }
+
+        // NOVA FUNÇÃO: Configurar atualizações em tempo real
+        async function configurarAtualizacaoTempoReal() {
+            if (modoOffline) return;
+            
+            try {
+                // Cancelar assinaturas anteriores se existirem
+                subscriptions.forEach(sub => sub.unsubscribe());
+                subscriptions = [];
+                
+                // Assinar para atualizações na tabela de placas
+                const placasSubscription = supabase
+                    .channel('placas-changes')
+                    .on('postgres_changes', 
+                        { 
+                            event: '*', 
+                            schema: 'public', 
+                            table: 'placas' 
+                        }, 
+                        async (payload) => {
+                            console.log('Mudança recebida em placas:', payload);
+                            await mostrarIndicadorAtualizacao();
+                            await carregarDadosSupabase();
+                            atualizarInterfaceCompleta();
+                        }
+                    )
+                    .subscribe();
+                
+                // Assinar para atualizações na tabela de lançamentos
+                const lancamentosSubscription = supabase
+                    .channel('lancamentos-changes')
+                    .on('postgres_changes', 
+                        { 
+                            event: '*', 
+                            schema: 'public', 
+                            table: 'lancamentos' 
+                        }, 
+                        async (payload) => {
+                            console.log('Mudança recebida em lançamentos:', payload);
+                            await mostrarIndicadorAtualizacao();
+                            await carregarDadosSupabase();
+                            atualizarInterfaceCompleta();
+                        }
+                    )
+                    .subscribe();
+                
+                subscriptions.push(placasSubscription, lancamentosSubscription);
+                
+                console.log('Assinaturas de tempo real configuradas com sucesso');
+                
+            } catch (error) {
+                console.error('Erro ao configurar atualizações em tempo real:', error);
+            }
+        }
+
+        // NOVA FUNÇÃO: Mostrar indicador de atualização
+        async function mostrarIndicadorAtualizacao() {
+            const indicator = document.getElementById('realtime-indicator');
+            indicator.style.display = 'block';
+            
+            // Ocultar após 3 segundos
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 3000);
+        }
+
+        // NOVA FUNÇÃO: Atualizar toda a interface
+        function atualizarInterfaceCompleta() {
+            atualizarDashboard();
+            atualizarTabelaEstoqueDisponivel();
+            atualizarTabelaEstoqueTriagem();
+            atualizarSelectPlacas();
+            atualizarHistoricoLancamentos();
+            
+            // Mostrar mensagem de atualização
+            const sectionAtual = document.querySelector('.page-section.active-section').id;
+            if (sectionAtual !== 'dashboard') {
+                mostrarAlerta('Dados atualizados em tempo real!', 'info');
+            }
         }
 
         function configurarEventos() {
@@ -1302,6 +1409,9 @@
                     // Carregar dados do Supabase
                     await carregarDadosSupabase();
                     
+                    // Configurar atualizações em tempo real
+                    await configurarAtualizacaoTempoReal();
+                    
                     // Fechar modal e mostrar aplicação
                     const loginModal = bootstrap.Modal.getInstance(document.getElementById('login-modal'));
                     loginModal.hide();
@@ -1317,7 +1427,7 @@
                     atualizarHistoricoLancamentos();
                     
                     // Mostrar alerta de sucesso
-                    mostrarAlerta('Login realizado com sucesso!', 'success');
+                    mostrarAlerta('Login realizado com sucesso! Atualizações em tempo real ativadas.', 'success');
                 } else {
                     mostrarAlerta('Senha incorreta. A senha é "Lab123@".', 'danger');
                 }
@@ -1333,6 +1443,10 @@
         function logout() {
             usuarioLogado = null;
             document.getElementById('main-navbar').style.display = 'none';
+            
+            // Cancelar assinaturas de tempo real
+            subscriptions.forEach(sub => sub.unsubscribe());
+            subscriptions = [];
             
             // Limpar senha salva
             localStorage.removeItem('senha-salva');
